@@ -47,9 +47,11 @@ jobs:                                                #iniziamo il lavoro
     #Se nella pipeline esegui il comando pytest senza aver creato prima almeno un file che inizia per "test_" pytest restituirà un errore!
 
       - name: Deploy Funzione
-        uses: google-github-actions/deploy-cloud-functions@v2      #funzione x deploy: cloud function versione 2 
+        uses: google-github-actions/deploy-cloud-functions@v4      #funzione x deploy
         with:               #i campi
           name: calories-intake-function                #nome da dare alla function di cloud
           runtime: python311                #vari parametri del deploy
           region: europe-west8
+          environment: GEN_2
+          source_dir: '.'
           entry_point: Calorimetro              #il nome della funzione Calorimetro(request) usata nel main.py
