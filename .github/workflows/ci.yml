@@ -1,26 +1,53 @@
-name: Test Calorimetro
+name: Pipeline di Deploy x Calories Intake Model    #diamo un nome al manuale per la pipeline
 
-on:
-  push:
-    branches: [ main ]
+on:                                                 #in base a cosa si deve attivsare? ("on" what?)
+  push:                                             #risponde: in base ad un trigger
+    branches:                                       #seleziona il ramo 
+        - main                                      #trattino per dire: qui inizia una lista il primo pezzo è questo (il main). Lo si nota meglio negli steps
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
+jobs:                                                #iniziamo il lavoro
+  deployment:                                       #nome del lavoro
+    runs-on: ubuntu-latest                          #gira sul corrispettivo della VM di google ma di github: Effimera, Preimpostata e pronta per l'uso
+  
     steps:
-    - name: Scarica codice
-      uses: actions/checkout@v4
+      - name: Clonaggio Repository
+        uses: actions/checkout@v4                   #nome del comando che clona tutti i file del main
 
-    - name: Configura Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Scelta Versione Python
+        uses: actions/setup-python@v5               #nome del comando che mette python
+        with:
+          python-version: '3.11'                    #sceglie la versione di python
 
-    - name: Installa librerie
-      run: |
-        pip install -r requirements.txt
-        pip install pytest
+      - name: Verifica File nel runner              #verifichamo i file
+        run: ls -la                                 #run si usa per i comandi nativi della VM, questo è il classico che si usa per vedere che gile ci sono
 
-    - name: Esegui Test
-      run: |
-        pytest -v test_main.py
+      - name: Installa Librerie
+        run: |                                      #tale simbolo "|" indica un comando su più righe
+          python -m pip install --upgrade pip       
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    #Aggiornaimo pip all'ultima versione + Controlla se il file requirements.txt esiste: se c'è, installa tutti i pacchetti indicati nel file
+    #pip è il "marketplace" dove si scarivano tutte le librerie che ci servono
+    #Il flag -m (che sta per Modulo) dice a python: Installa la libreria PIP dai tuoi file ed eseguilo
+    #Il flag -f (che sta per file) ti dice se il file esiste e se davvero è un file (e non di una cartella o altro)
+    #Il flag -r (che sta per Requirements) dice a pip: Non ti do i singoli nomi a voce: leggi la lista presente nel file requirements.txt e installami tutte quelle librerie insieme in un solo colpo
+
+      - name: Esecuzione Test
+        run: pytest
+
+    #Quando nella pipeline scrivi il comando pytest, il tool fa questo in automatico:
+    #Scansiona l'intero progetto alla ricerca di file che iniziano con "test_" chiamati da noi così e scritti da noi
+    #Esegue tutte le funzioni di test che trova, se tutte hanno successo continua, altrimenti ferma la pipeline e blocca il deploy
+    #Se nella pipeline esegui il comando pytest senza aver creato prima almeno un file che inizia per "test_" pytest restituirà un errore!
+
+      - name: Autentificazione
+        uses: google-github-actions/auth@v2                 #comando per autentificarsi
+        with:
+          credentials_json: ${{ secrets.LASCIAPASSARE_X_CLOUD }}       #chiave con i permessi presa da google cloud con un account con tutti i permessi necessari, salvata come secret repository perche info sensibili
+
+      - name: Deploy Funzione
+        uses: google-github-actions/deploy-cloud-functions@v2      #funzione x deploy: cloud function versione 2 
+        with:               #i campi
+          name: calories-intake-function                #nome da dare alla function di cloud
+          runtime: python311                #vari parametri del deploy
+          region: europe-west8
+          entry_point: Calorimetro              #il nome della funzione Calorimetro(request) usata nel main.py
