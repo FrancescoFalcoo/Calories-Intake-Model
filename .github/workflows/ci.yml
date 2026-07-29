@@ -32,6 +32,11 @@ jobs:                                                #iniziamo il lavoro
     #Il flag -m (che sta per Modulo) dice a python: Installa la libreria PIP dai tuoi file ed eseguilo
     #Il flag -f (che sta per file) ti dice se il file esiste e se davvero è un file (e non di una cartella o altro)
     #Il flag -r (che sta per Requirements) dice a pip: Non ti do i singoli nomi a voce: leggi la lista presente nel file requirements.txt e installami tutte quelle librerie insieme in un solo colpo
+  
+      - name: Autentificazione
+        uses: google-github-actions/auth@v2                 #comando per autentificarsi
+        with:
+          credentials_json: ${{ secrets.LASCIAPASSARE_X_CLOUD }}       #chiave con i permessi presa da google cloud con un account con tutti i permessi necessari, salvata come secret repository perche info sensibili
 
       - name: Esecuzione Test
         run: pytest
@@ -40,11 +45,6 @@ jobs:                                                #iniziamo il lavoro
     #Scansiona l'intero progetto alla ricerca di file che iniziano con "test_" chiamati da noi così e scritti da noi
     #Esegue tutte le funzioni di test che trova, se tutte hanno successo continua, altrimenti ferma la pipeline e blocca il deploy
     #Se nella pipeline esegui il comando pytest senza aver creato prima almeno un file che inizia per "test_" pytest restituirà un errore!
-
-      - name: Autentificazione
-        uses: google-github-actions/auth@v2                 #comando per autentificarsi
-        with:
-          credentials_json: ${{ secrets.LASCIAPASSARE_X_CLOUD }}       #chiave con i permessi presa da google cloud con un account con tutti i permessi necessari, salvata come secret repository perche info sensibili
 
       - name: Deploy Funzione
         uses: google-github-actions/deploy-cloud-functions@v2      #funzione x deploy: cloud function versione 2 
