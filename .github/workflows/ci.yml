@@ -23,10 +23,12 @@ jobs:                                                #iniziamo il lavoro
 
       - name: Installa Librerie
         run: |                                      #tale simbolo "|" indica un comando su più righe
-          python -m pip install --upgrade pip       
+          python -m pip install --upgrade pip
+          pip install pytest             
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     #Aggiornaimo pip all'ultima versione + Controlla se il file requirements.txt esiste: se c'è, installa tutti i pacchetti indicati nel file
     #pip è il "marketplace" dove si scarivano tutte le librerie che ci servono
+    #installiamo pytest per eseguire i test
     #Il flag -m (che sta per Modulo) dice a python: Installa la libreria PIP dai tuoi file ed eseguilo
     #Il flag -f (che sta per file) ti dice se il file esiste e se davvero è un file (e non di una cartella o altro)
     #Il flag -r (che sta per Requirements) dice a pip: Non ti do i singoli nomi a voce: leggi la lista presente nel file requirements.txt e installami tutte quelle librerie insieme in un solo colpo
