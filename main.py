@@ -126,7 +126,7 @@ def search_usda(cibo):
          "api_key": USDA_key,                               #inseriamo la chiave API dai secrets
          "query": cibo,
          "pageSize": 1,                                     #quanti risultati vogliamo, 1 solo per semplicità
-         "dataType": ["Survey (FNDDS)", "Foundation"]       #tipi di dati che vogliamo, escludiamo i cibi dei supermercati, solo i cibi "ufficiali" del governo
+         "dataType": ["Foundation", "SR legacy"]            #tipi di dati che vogliamo, escludiamo i cibi dei supermercati, solo i cibi "ufficiali" del governo
     }
 
     interrogazione = requests.get(url, params=parametri)
