@@ -107,10 +107,10 @@ def search_openfoodfacts(codice):
     sodio_converted = cibo.get("sodium_100g") * 1000 if cibo.get("sodium_100g") is not None else 0                  #da milligrammi a grammi + controllo che non sia vuoto
     potassio_converted = cibo.get("potassium_100g") * 1000 if cibo.get("potassium_100g") is not None else 0
 
-    nutrienti = {                                                   #impacchettiamo qui, nel main facciamo solo la normalizzazione 
-    "nome_cibo": risposta["products"][0]["product_name"],           #prendiamo il nome del cibo trovato, lo useremo per la risposta al client
-    "calorie": float(cibo.get("energy-kcal_100g", 0.0)),            #grazie alla get controlliamo che il campo esista, se non esiste mettiamo 0.0
-    "carboidrati": float(cibo.get("carbohydrates_100g", 0.0)),      #qui è necessario il controllo perche lo mettono gli utenti, quindi non è detto che ci sia sempre
+    nutrienti = {                                                           #impacchettiamo qui, nel main facciamo solo la normalizzazione 
+    "nome_cibo": prodotto.get("product_name", f"Prodotto_{codice}"),        #prendiamo il nome del cibo trovato, lo useremo per la risposta al client
+    "calorie": float(cibo.get("energy-kcal_100g", 0.0)),                    #grazie alla get controlliamo che il campo esista, se non esiste mettiamo 0.0
+    "carboidrati": float(cibo.get("carbohydrates_100g", 0.0)),              #qui è necessario il controllo perche lo mettono gli utenti, quindi non è detto che ci sia sempre
     "zuccheri": float(cibo.get("sugars_100g", 0.0)),
     "fibre": float(cibo.get("fiber_100g", 0.0)),
     "proteine": float(cibo.get("proteins_100g", 0.0)),
