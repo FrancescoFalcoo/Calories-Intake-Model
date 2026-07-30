@@ -45,13 +45,19 @@ jobs:                                                #iniziamo il lavoro
     #Scansiona l'intero progetto alla ricerca di file che iniziano con "test_" chiamati da noi così e scritti da noi
     #Esegue tutte le funzioni di test che trova, se tutte hanno successo continua, altrimenti ferma la pipeline e blocca il deploy
     #Se nella pipeline esegui il comando pytest senza aver creato prima almeno un file che inizia per "test_" pytest restituirà un errore!
+        
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
 
       - name: Deploy Funzione
-        uses: google-github-actions/deploy-cloud-functions@v4      #funzione x deploy
-        with:               #i campi
-          name: calories-intake-function                #nome da dare alla function di cloud
-          runtime: python311                #vari parametri del deploy
-          region: europe-west8
-          environment: GEN_2
-          source_dir: '.'
-          entry_point: Calorimetro              #il nome della funzione Calorimetro(request) usata nel main.py
+        env:
+          CHIAVE_USDA: ${{ secrets.CHIAVE_USDA }}
+        run: |
+          gcloud functions deploy calories-intake-function \
+            --gen2 \
+            --runtime=python311 \
+            --region=europe-west8 \
+            --entry-point=Calorimetro \
+            --source=. \
+            --trigger-http \
+            --set-env-vars CHIAVE_USDA="$CHIAVE_USDA"
