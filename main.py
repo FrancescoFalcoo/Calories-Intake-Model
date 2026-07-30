@@ -67,21 +67,20 @@ def Calorimetro(request):                   #Inserendo request tra le parentesi,
 
 def search_openfoodfacts(codice):
     
-    url = "https://world.openfoodfacts.org/cgi/search.pl"           #URL del sito che ci darà le calorie in risposta
-    parametri = {                                                   #parametri richiesti da documentazione
+    url = f"https://world.openfoodfacts.org/api/v2/product/{codice}.json"           #URL del sito che ci darà le calorie in risposta, da API
+
+    parametri = {                                           #parametri richiesti da documentazione
         "search_terms": codice,                             #nome del cibo da cercare, prenderà il contenuto della variabile
         "search_simple": 1,             
         "action": "process",
         "json": 1                                           #Non mandarmi una pagina web HTML, mandami i dati puliti in formato JSON
         }
-    
-        # mandiamo la richiesta HTTP GET
-        # CREIAMO LA NOSTRA CARTA D'IDENTITÀ (User-Agent)
-    intestazioni = {
+           
+    intestazioni = {                                        # CREIAMO LA NOSTRA CARTA D'IDENTITÀ (User-Agent)
             "User-Agent": "ContaCalorieApp/1.0 - Progetto di test"
         }
         
-        # Mandiamo la richiesta HTTP GET includendo l'intestazione
+    # Mandiamo la richiesta HTTP GET 
     interrogazione = requests.get(url, params=parametri, headers=intestazioni)
     
     if interrogazione.status_code != 200:
@@ -89,11 +88,13 @@ def search_openfoodfacts(codice):
     
     risposta = interrogazione.json()                                #convertiamola in un dizionario, usiamo il metodo .json 
 
-    if not risposta.get("products"):
-        return None                                                 #controllo di sicurezza: se la lista "products" è vuota, ritorniamo None
-    cibo = risposta["products"][0]["nutriments"]                    #ci salviamo tutti i nutrienti insieme, poi con solo un accesso prendiamo i 4 campi da nutrient, non ogni volta entrare dentro 4 dizionari!
+    if risposta.get("status") != 1 or not risposta.get("product"):
+        return None
 
-    calorie = 0.0                                           #inizializzazione a zero(Evita il NameError se un macro manca)
+    prodotto = risposta["product"]                                  #cambio formattazione per altra porta dell'API
+    cibo = prodotto.get("nutriments", {})
+    
+    calorie = 0.0                                                   #inizializzazione a zero(Evita il NameError se un macro manca)
     carbo = 0.0
     sugar = 0.0
     fibra = 0.0
