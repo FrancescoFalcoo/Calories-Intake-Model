@@ -20,12 +20,16 @@ def Calorimetro(request):                   #Inserendo request tra le parentesi,
     
     pasto = richiesta_utente["nome"]        #Dal dizionario estratto dal json, prendiamo i valori che ci interessano dai relativi campi
     peso = richiesta_utente["quantità"]
+    data = richiesta_utente["data"]
 
     # ROUTER: È un codice a barre (solo numeri) o testo?
     if re.match(r'^\d{8,14}$', pasto):                  #se input_utente è un codice a barre (solo numeri, da 8 a 14 cifre) allora cerchiamo su OpenFoodFacts, altrimenti cerchiamo su USDA
         nutrienti = search_openfoodfacts(pasto)
     else:
         nutrienti = search_usda(pasto)
+
+    if not nutrienti or not isinstance(nutrienti, dict) or "calorie" not in nutrienti:      #controllo di sicurezza: se la funzione di ricerca non ha trovato il cibo, ritorniamo un errore al client
+        return {"errore": f"Prodotto non trovato o dati incompleti per: {pasto}"}, 404
 
     #normalizziamo i valori in base al peso che abbiamo 
     true_cal = (nutrienti["calorie"] * peso)/100
@@ -50,12 +54,12 @@ def Calorimetro(request):                   #Inserendo request tra le parentesi,
     "7_proteine" : true_pro,
     "8_grassi" : true_fat,
     "9_grassi_saturi" : true_saturi,
-    "10_sodio" : true_sodio,
-    "11_potassio" : true_potassio,
+    "a_sodio" : true_sodio,
+    "b_potassio" : true_potassio,
     }
 
     nome_documento = f"{nutrienti['nome_cibo']}_{peso}g"
-    db.collection("pasti").document(nome_documento).set(dati_pasto)             #firestore è dinamico, se la collection pasti non c'è la crea, altrimenti si limita ad aggiungere. pure se dovessi cancellare i dati questo codice continuerebbe a funzionare!
+    db.collection(data).document(nome_documento).set(dati_pasto)              #firestore è dinamico, se la collection pasti non c'è la crea, altrimenti si limita ad aggiungere. pure se dovessi cancellare i dati questo codice continuerebbe a funzionare!
 
     #risposta al client che quello che chiesto è stato salvato
     return ({"stato": "successo"},200)               #restituiamo la stringa successo e il codice 200
@@ -80,9 +84,8 @@ def search_openfoodfacts(codice):
         # Mandiamo la richiesta HTTP GET includendo l'intestazione
     interrogazione = requests.get(url, params=parametri, headers=intestazioni)
     
-        # AGGIUNTA EXTRA SICUREZZA: Controlliamo se la richiesta è andata a buon fine prima di leggere il JSON
     if interrogazione.status_code != 200:
-            return {"errore": f"OpenFoodFacts ha risposto con errore {interrogazione.status_code}"}, 500
+        return None
     
     risposta = interrogazione.json()                                #convertiamola in un dizionario, usiamo il metodo .json 
 
@@ -126,13 +129,13 @@ def search_usda(cibo):
          "api_key": USDA_key,                               #inseriamo la chiave API dai secrets
          "query": cibo,
          "pageSize": 1,                                     #quanti risultati vogliamo, 1 solo per semplicità
-         "dataType": ["Foundation", "SR legacy"]            #tipi di dati che vogliamo, escludiamo i cibi dei supermercati, solo i cibi "ufficiali" del governo
+         "dataType": ["Foundation", "SR Legacy"]            #tipi di dati che vogliamo, escludiamo i cibi dei supermercati, solo i cibi "ufficiali" del governo
     }
 
     interrogazione = requests.get(url, params=parametri)
     
-    if interrogazione.status_code != 200:                   #Controllo di sicurezza
-        return {"errore": f"USDA ha risposto con errore {interrogazione.status_code}"}, 500
+    if interrogazione.status_code != 200:
+        return None
     
     risposta = interrogazione.json()                        #Conversione in dizionario/JSON Python
     
