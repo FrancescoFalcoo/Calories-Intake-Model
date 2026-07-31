@@ -71,8 +71,19 @@ def Calorimetro(request):                   #Inserendo request tra le parentesi,
 
 def Totalizzatore(event, context=None):                     #funzione che si attiva ogni volta che un documento viene aggiunto o rimosso da una collection, e calcola il totale dei nutrienti della collection
 
-    if event.params["id_cibo"] == "TOTALE":                 #si attiva ogni volta che un nuovo documento viene tolto/messo in una collection, quindi anche quando viene messo TOTALE! Evitiamo loop
+    db = firestore.Client(project="contacalorie-503715", database="calories-table")     #il comando dell'SDK di Google che crea il "gestore" della connessione a Firestore. Quando l'app girerà su GCP, questa riga si collegherà in automatico al tuo database.
+
+    # 2. Trasformiamo l'indirizzo grezzo di Google in un oggetto Firestore
+    # str(context.resource) finisce sempre con ".../documents/pasti/yogurt_200g"
+    path_relativo = str(context.resource).split("/documents/")[-1]
+    doc_ref = db.document(path_relativo)
+
+    # 3. GUARD CLAUSE pulitissima col .id (senza toccare stringhe o event.params)
+    if doc_ref.id == "TOTALE":
+        print("Scrittura su TOTALE ignorata per evitare loop.")     #si attiva ogni volta che un nuovo documento viene tolto/messo in una collection, quindi anche quando viene messo TOTALE! Evitiamo loop
         return
+
+    collezione_ref = doc_ref.parent                 #lui ci passa il riferimento al documento, ma noi vogliamo la collection, quindi prendiamo il parent del documento, cioè la collezione a cui appartiene il documento "padre", che ha scatenato l'evento
      
     tot_calorie = 0.0
     tot_carboidrati = 0.0
@@ -83,16 +94,6 @@ def Totalizzatore(event, context=None):                     #funzione che si att
     tot_grassi_saturi = 0.0
     tot_sodio = 0.0
     tot_potassio = 0.0 
-
-    db = firestore.Client(project="contacalorie-503715", database="calories-table")     #il comando dell'SDK di Google che crea il "gestore" della connessione a Firestore. Quando l'app girerà su GCP, questa riga si collegherà in automatico al tuo database.
-
-    tabella_ref = (
-        event.data.after.reference                      #dalla variabile evento che ci passa Google Cloud, prendiamo il riferimento al documento che è stato modificato. 
-        if event.data.after                             #Se l'evento è una cancellazione, 'after' non esiste, quindi prendiamo 'before'.
-            else event.data.before.reference                            
-    )
-
-    collezione_ref = tabella_ref.parent                 #lui ci passa il riferimento al documento, ma noi vogliamo la collection, quindi prendiamo il parent del documento, cioè la collezione a cui appartiene il documento "padre", che ha scatenato l'evento
 
     #Estrazione dei dati dalla collection e somma dei valori
     for cibo in collezione_ref.stream():                    #scorriamo tutti i documenti della collection tramite stream che è più efficiente di get se dobbiammo prendere tutti i cibi di una giornata
