@@ -4,6 +4,8 @@ import requests
 import re                                           #confronto per capire se chiedo un cibo o un codice a barre
 import os                                           #serve per prendere la chiave API di USDA dai secrets e passarla alla funzione search_usda
 from google.cloud import firestore
+from firebase_functions import firestore_fn
+from APIrequests import search_openfoodfacts, search_usda   #divisione del codice in due file per chiarezza, importiamo le funzioni di ricerca da APIrequests.py 
 
 #dpbbiamo inizializzare l'oggetto applicazione Flask e il client per il database
 db = firestore.Client(project="contacalorie-503715", database="calories-table")     #il comando dell'SDK di Google che crea il "gestore" della connessione a Firestore. Quando l'app girerà su GCP, questa riga si collegherà in automatico al tuo database.
@@ -62,134 +64,62 @@ def Calorimetro(request):                   #Inserendo request tra le parentesi,
     db.collection(data).document(nome_documento).set(dati_pasto)              #firestore è dinamico, se la collection pasti non c'è la crea, altrimenti si limita ad aggiungere. pure se dovessi cancellare i dati questo codice continuerebbe a funzionare!
 
     #risposta al client che quello che chiesto è stato salvato
-    return ({"stato": "successo"},200)               #restituiamo la stringa successo e il codice 200
+    return ({"stato": "successo"},200)                  #restituiamo la stringa successo e il codice 200
 
 
-def search_openfoodfacts(codice):
-    
-    url = f"https://world.openfoodfacts.org/api/v2/product/{codice}.json"           #URL del sito che ci darà le calorie in risposta, da API
-
-    parametri = {                                           #parametri richiesti da documentazione
-        "search_terms": codice,                             #nome del cibo da cercare, prenderà il contenuto della variabile
-        "search_simple": 1,             
-        "action": "process",
-        "json": 1                                           #Non mandarmi una pagina web HTML, mandami i dati puliti in formato JSON
-        }
-           
-    intestazioni = {                                        # CREIAMO LA NOSTRA CARTA D'IDENTITÀ (User-Agent)
-            "User-Agent": "ContaCalorieApp/1.0 - Progetto di test"
-        }
-        
-    # Mandiamo la richiesta HTTP GET 
-    interrogazione = requests.get(url, params=parametri, headers=intestazioni)
-    
-    if interrogazione.status_code != 200:
-        return None
-    
-    risposta = interrogazione.json()                                #convertiamola in un dizionario, usiamo il metodo .json 
-
-    if risposta.get("status") != 1 or not risposta.get("product"):
-        return None
-
-    prodotto = risposta["product"]                                  #cambio formattazione per altra porta dell'API
-    cibo = prodotto.get("nutriments", {})
-    
-    calorie = 0.0                                                   #inizializzazione a zero(Evita il NameError se un macro manca)
-    carbo = 0.0
-    sugar = 0.0
-    fibra = 0.0
-    protein = 0.0
-    fat = 0.0
-    saturi = 0.0
-    sodio = 0.0
-    potassio = 0.0
-
-    sodio_converted = cibo.get("sodium_100g") * 1000 if cibo.get("sodium_100g") is not None else 0                  #da milligrammi a grammi + controllo che non sia vuoto
-    potassio_converted = cibo.get("potassium_100g") * 1000 if cibo.get("potassium_100g") is not None else 0
-
-    nutrienti = {                                                           #impacchettiamo qui, nel main facciamo solo la normalizzazione 
-    "nome_cibo": prodotto.get("product_name", f"Prodotto_{codice}"),        #prendiamo il nome del cibo trovato, lo useremo per la risposta al client
-    "calorie": float(cibo.get("energy-kcal_100g", 0.0)),                    #grazie alla get controlliamo che il campo esista, se non esiste mettiamo 0.0
-    "carboidrati": float(cibo.get("carbohydrates_100g", 0.0)),              #qui è necessario il controllo perche lo mettono gli utenti, quindi non è detto che ci sia sempre
-    "zuccheri": float(cibo.get("sugars_100g", 0.0)),
-    "fibre": float(cibo.get("fiber_100g", 0.0)),
-    "proteine": float(cibo.get("proteins_100g", 0.0)),
-    "grassi": float(cibo.get("fat_100g", 0.0)),
-    "grassi_saturi": float(cibo.get("saturated-fat_100g", 0.0)),
-    "sodio": sodio_converted,
-    "potassio": potassio_converted
-    }
-
-    return nutrienti
 
 
-def search_usda(cibo):
-    url = "https://api.nal.usda.gov/fdc/v1/foods/search"    #URL del sito della seconda API che ci darà le calorie in risposta
-    USDA_key=os.environ.get("CHIAVE_USDA")                  #prendiamo la chiave API dai secrets, che abbiamo passato come variabile d'ambiente alla funzione cloud
-    parametri = {
-         "api_key": USDA_key,                               #inseriamo la chiave API dai secrets
-         "query": cibo,
-         "pageSize": 1,                                     #quanti risultati vogliamo, 1 solo per semplicità
-         "dataType": ["Foundation", "SR Legacy"]            #tipi di dati che vogliamo, escludiamo i cibi dei supermercati, solo i cibi "ufficiali" del governo
-    }
+def Totalizzatore(event):
 
-    interrogazione = requests.get(url, params=parametri)
-    
-    if interrogazione.status_code != 200:
-        return None
-    
-    risposta = interrogazione.json()                        #Conversione in dizionario/JSON Python
-    
-    # 2. CONTROLLO E FALLBACK CORRETTO: la lista "foods" è vuota?
-    if not risposta.get("foods"):
-        return search_openfoodfacts(cibo)                   #chiamata di emergenza: se non trova il cibo su USDA, lo cerchiamo su OpenFoodFacts
-    
+    if event.params["id_cibo"] == "TOTALE":                 #si attiva ogni volta che un nuovo documento viene tolto/messo in una collection, quindi anche quando viene messo TOTALE! Evitiamo loop
+        return
+     
+    tot_calorie = 0.0
+    tot_carboidrati = 0.0
+    tot_zuccheri = 0.0
+    tot_fibre = 0.0
+    tot_proteine = 0.0
+    tot_grassi = 0.0
+    tot_grassi_saturi = 0.0
+    tot_sodio = 0.0
+    tot_potassio = 0.0 
 
-    cibo = risposta["foods"][0]                             #Prendiamo il primo risultato della lista di cibi trovati
+    db = firestore.Client(project="contacalorie-503715", database="calories-table")     #il comando dell'SDK di Google che crea il "gestore" della connessione a Firestore. Quando l'app girerà su GCP, questa riga si collegherà in automatico al tuo database.
 
-    nome_cibo = cibo["description"]                         #Prendiamo il nome del cibo trovato, lo useremo per la risposta al client
+    tabella_ref = (
+        event.data.after.reference                      #dalla variabile evento che ci passa Google Cloud, prendiamo il riferimento al documento che è stato modificato. 
+        if event.data.after                             #Se l'evento è una cancellazione, 'after' non esiste, quindi prendiamo 'before'.
+            else event.data.before.reference                            
+    )
 
-    calorie = 0.0                                           #inizializzazione a zero(Evita il NameError se un macro manca)
-    carbo = 0.0
-    sugar = 0.0
-    fibra = 0.0
-    protein = 0.0
-    fat = 0.0
-    saturi = 0.0
-    sodio = 0.0
-    potassio = 0.0
+    collezione_ref = tabella_ref.parent                 #lui ci passa il riferimento al documento, ma noi vogliamo la collection, quindi prendiamo il parent del documento, cioè la collezione a cui appartiene il documento "padre", che ha scatenato l'evento
 
-    for i in cibo["foodNutrients"]:                         #ciclo for per scorrere tutti i nutrienti del cibo trovato. In Python "i" non è per forza un numero, ma si adatta! qui i è una struct
-        if i["nutrientId"] == 1008:                 
-            calorie = i["value"]
-        elif i["nutrientId"] == 1005:
-            carbo = i["value"]
-        elif i["nutrientId"] == 2000:
-            sugar = i["value"]
-        elif i["nutrientId"] == 1079: 
-            fibra = i["value"]
-        elif i["nutrientId"] == 1003:
-            protein = i["value"]
-        elif i["nutrientId"] == 1004: 
-            fat = i["value"]
-        elif i["nutrientId"] == 1258: 
-            saturi = i["value"]
-        elif i["nutrientId"] == 1093: 
-            sodio = i["value"]
-        elif i["nutrientId"] == 1092:
-            potassio = i["value"]
+    #Estrazione dei dati dalla collection e somma dei valori
+    for cibo in collezione_ref.stream():                    #scorriamo tutti i documenti della collection tramite stream che è più efficiente di get se dobbiammo prendere tutti i cibi di una giornata
+        cibo_diz = cibo.to_dict()                           #convertiamo il cibo corrente in un dizionario Python così possiamo accedere ai campi con le chiavi
+        if cibo_diz.get("1_nome") != "TOTALE":              #ovviamente non vogliamo sommare il documento TOTALE, altrimenti avremmo un loop infinito
+            tot_calorie += cibo_diz.get("3_kcal", 0)
+            tot_carboidrati += cibo_diz.get("4_carboidrati", 0)
+            tot_zuccheri += cibo_diz.get("5_zuccheri", 0)
+            tot_fibre += cibo_diz.get("6_fibre", 0)
+            tot_proteine += cibo_diz.get("7_proteine", 0)
+            tot_grassi += cibo_diz.get("8_grassi", 0)
+            tot_grassi_saturi += cibo_diz.get("9_grassi_saturi", 0)
+            tot_sodio += cibo_diz.get("a_sodio", 0)
+            tot_potassio += cibo_diz.get("b_potassio", 0)
 
-    nutrienti = {                                           #impacchettiamo qui, nel main facciamo solo la normalizzazione
-        "nome_cibo": nome_cibo,
-        "calorie": calorie,
-        "carboidrati": carbo,
-        "zuccheri": sugar,
-        "fibre": fibra,
-        "proteine": protein,
-        "grassi": fat,
-        "grassi_saturi": saturi,
-        "sodio": sodio,
-        "potassio": potassio
-    }
-
-    return nutrienti
+    #Creazione/Upgrade di TOTALE                                         
+    totale_ref = collezione_ref.document("TOTALE")          #creiamo riferimento al documento TOTALE, per come funziona Firestore, se non esiste lo crea, altrimenti lo aggiorna
+    totale_ref.set({                                        #setta i valori del documento TOTALE con i valori
+        "1_nome": "TOTALE",
+        "3_kcal": tot_calorie,
+        "4_carboidrati": tot_carboidrati,
+        "5_zuccheri": tot_zuccheri,
+        "6_fibre": tot_fibre,
+        "7_proteine": tot_proteine,
+        "8_grassi": tot_grassi,
+        "9_grassi_saturi": tot_grassi_saturi,
+        "a_sodio": tot_sodio,
+        "b_potassio": tot_potassio,
+    }, merge=True)                                          #merge=True significa che se il documento esiste già, aggiorna solo i campi che gli passiamo, senza cancellare gli altri campi che potrebbero esserci
+    return

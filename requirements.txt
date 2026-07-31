@@ -2,3 +2,4 @@ Flask
 requests
 google-cloud-firestore
 gunicorn
+firebase-functions

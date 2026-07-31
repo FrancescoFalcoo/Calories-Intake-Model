@@ -5,7 +5,7 @@ on:                                                 #in base a cosa si deve atti
     branches:                                       #seleziona il ramo 
         - main                                      #trattino per dire: qui inizia una lista il primo pezzo è questo (il main). Lo si nota meglio negli steps
 
-jobs:                                                #iniziamo il lavoro
+jobs:                                               #iniziamo il lavoro
   deployment:                                       #nome del lavoro
     runs-on: ubuntu-latest                          #gira sul corrispettivo della VM di google ma di github: Effimera, Preimpostata e pronta per l'uso
   
@@ -26,6 +26,7 @@ jobs:                                                #iniziamo il lavoro
           python -m pip install --upgrade pip
           pip install pytest             
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
     #Aggiornaimo pip all'ultima versione + Controlla se il file requirements.txt esiste: se c'è, installa tutti i pacchetti indicati nel file
     #pip è il "marketplace" dove si scarivano tutte le librerie che ci servono
     #installiamo pytest per eseguire i test
@@ -49,7 +50,7 @@ jobs:                                                #iniziamo il lavoro
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy Funzione
+      - name: Deploy Funzione Calorimetro
         env:
           CHIAVE_USDA: ${{ secrets.CHIAVE_USDA }}
         run: |
@@ -61,3 +62,20 @@ jobs:                                                #iniziamo il lavoro
             --source=. \
             --trigger-http \
             --set-env-vars CHIAVE_USDA="$CHIAVE_USDA"
+
+      - name: Deploy Funzione Totalizzatore
+        run: |
+          gcloud functions deploy totalizzatore-function \
+            --gen2 \
+            --runtime=python311 \
+            --region=europe-west8 \
+            --entry-point=Totalizzatore \
+            --source=. \
+            --trigger-event-filters="type=google.cloud.firestore.document.v1.written" \       
+            --trigger-event-filters="document=days/{giorno}/cibi/{id_cibo}" \
+            --trigger-event-filters="database=calories-table"
+
+    #notiamo come 3 volte trigger event, ogni volta aggiunge una condizione in più come se ci fossero degli AND
+    #il primo trigger-event-filters dice che la funzione si attiva quando un documento viene scritto
+    #il secondo trigger-event-filters dice che la funzione si attiva solo se il documento scritto è nella collection "days" e ha la struttura "days/{giorno}/cibi/{id_cibo}"
+    #il terzo trigger-event-filters dice che la funzione si attiva solo se il database è "calories-table"
