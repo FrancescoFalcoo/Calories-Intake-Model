@@ -113,6 +113,7 @@ def Totalizzatore(event, context=None):                     #funzione che si att
     totale_ref = collezione_ref.document("TOTALE")          #creiamo riferimento al documento TOTALE, per come funziona Firestore, se non esiste lo crea, altrimenti lo aggiorna
     totale_ref.set({                                        #setta i valori del documento TOTALE con i valori
         "1_nome": "TOTALE",
+        "2_peso": 0.0,
         "3_kcal": tot_calorie,
         "4_carboidrati": tot_carboidrati,
         "5_zuccheri": tot_zuccheri,
