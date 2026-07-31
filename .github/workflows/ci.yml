@@ -71,11 +71,11 @@ jobs:                                               #iniziamo il lavoro
             --region=europe-west8 \
             --entry-point=Totalizzatore \
             --source=. \
-            --trigger-event-filters="type=google.cloud.firestore.document.v1.written" \       
-            --trigger-event-filters="document=days/{giorno}/cibi/{id_cibo}" \
-            --trigger-event-filters="database=calories-table"
+            --trigger-event-filters="type=google.cloud.firestore.document.v1.written" \
+            --trigger-event-filters="database=calories-table" \
+            --trigger-event-filters-path-pattern="document=days/{giorno}/cibi/{id_cibo}"
 
     #notiamo come 3 volte trigger event, ogni volta aggiunge una condizione in più come se ci fossero degli AND
     #il primo trigger-event-filters dice che la funzione si attiva quando un documento viene scritto
-    #il secondo trigger-event-filters dice che la funzione si attiva solo se il documento scritto è nella collection "days" e ha la struttura "days/{giorno}/cibi/{id_cibo}"
-    #il terzo trigger-event-filters dice che la funzione si attiva solo se il database è "calories-table"
+    #il secondo trigger-event-filters dice che la funzione si attiva solo se il database è "calories-table"
+    #il terzo trigger-event-filters + "-path-pattern" dice che la funzione si attiva solo se il documento scritto è nella collection "days" e ha la struttura "days/{giorno}/cibi/{id_cibo}", il path-pattern è necessario per specificare il path per via delle parantesi graffe che altrimenti verrebbero interpretate come variabili di ambiente
