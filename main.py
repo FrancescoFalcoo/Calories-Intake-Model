@@ -69,7 +69,7 @@ def Calorimetro(request):                   #Inserendo request tra le parentesi,
 
 
 
-def Totalizzatore(event, context):                  #funzione che si attiva ogni volta che un documento viene aggiunto o rimosso da una collection, e calcola il totale dei nutrienti della collection
+def Totalizzatore(event, context=None):                     #funzione che si attiva ogni volta che un documento viene aggiunto o rimosso da una collection, e calcola il totale dei nutrienti della collection
 
     if event.params["id_cibo"] == "TOTALE":                 #si attiva ogni volta che un nuovo documento viene tolto/messo in una collection, quindi anche quando viene messo TOTALE! Evitiamo loop
         return
