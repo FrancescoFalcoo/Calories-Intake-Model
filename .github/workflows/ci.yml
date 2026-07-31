@@ -73,7 +73,7 @@ jobs:                                               #iniziamo il lavoro
             --source=. \
             --trigger-event-filters="type=google.cloud.firestore.document.v1.written" \
             --trigger-event-filters="database=calories-table" \
-            --trigger-event-filters-path-pattern="document=days/{giorno}/cibi/{id_cibo}"
+            --trigger-event-filters-path-pattern="document=pasti/{id_cibo}"
 
     #notiamo come 3 volte trigger event, ogni volta aggiunge una condizione in più come se ci fossero degli AND
     #il primo trigger-event-filters dice che la funzione si attiva quando un documento viene scritto

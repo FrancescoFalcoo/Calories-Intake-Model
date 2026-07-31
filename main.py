@@ -122,4 +122,6 @@ def Totalizzatore(event):
         "a_sodio": tot_sodio,
         "b_potassio": tot_potassio,
     }, merge=True)                                          #merge=True significa che se il documento esiste già, aggiorna solo i campi che gli passiamo, senza cancellare gli altri campi che potrebbero esserci
+
+    print(f"Documento TOTALE aggiornato con successo nella collezione pasti!")
     return
