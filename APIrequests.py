@@ -3,10 +3,20 @@ import requests
 import re                                           #confronto per capire se chiedo un cibo o un codice a barre
 import os                                           #serve per prendere la chiave API di USDA dai secrets e passarla alla funzione search_usda
 from google.cloud import firestore
+#libreie e funzione per logging
+import time
+import json
 
-def search_openfoodfacts(codice):
-    
-    url = f"https://world.openfoodfacts.org/api/v2/product/{codice}.json"           #URL del sito che ci darà le calorie in risposta, da API
+def log_json(severity, message, **kwargs):                                          #**wkargs dice che oltre i primi due argomenti, gliene possiamo passare un altro numero arbitrario se vogliamo
+    print(json.dumps({"severity": severity, "message": message, **kwargs}))         #diventa un unico dizionario, che poi viene convertito in JSON e stampato sul log di GCP. GCP lo leggerà e lo formatterà in automatico
+
+def search_openfoodfacts(codice, tipo):
+    start_time = time.time()                    # Inizio del timer per misurare il tempo di esecuzione della funzione (secondi dal 1 gen 1970)
+
+    if tipo == "barcode":
+        url = f"https://world.openfoodfacts.org/api/v2/product/{codice}.json"           #URL del sito che ci darà le calorie in risposta se usiamo il codice a barre, da API
+    elif tipo == "text":
+        url = "https://world.openfoodfacts.org/cgi/search.pl"                           #URL del sito che ci darà le calorie in risposta se è nome prodotto in caso di fallimento di USDA
 
     parametri = {                                           #parametri richiesti da documentazione
         "search_terms": codice,                             #nome del cibo da cercare, prenderà il contenuto della variabile
@@ -20,9 +30,10 @@ def search_openfoodfacts(codice):
         }
         
     # Mandiamo la richiesta HTTP GET 
-    interrogazione = requests.get(url, params=parametri, headers=intestazioni)
+    interrogazione = requests.get(url, params=parametri, headers=intestazioni, timeout=7.0)         #conviene sempre mettere il timeout
     
     if interrogazione.status_code != 200:
+        log_json("ERROR", f"Chiamata a OpenFoodFacts fallita con codice {interrogazione.status_code}", event_type="failed_API_call", nome=codice, status_code=interrogazione.status_code)
         return None
     
     risposta = interrogazione.json()                                #convertiamola in un dizionario, usiamo il metodo .json 
@@ -30,10 +41,13 @@ def search_openfoodfacts(codice):
     if risposta.get("status") != 1 or not risposta.get("product"):
         return None
 
+    latency = round((time.time() - start_time) * 1000, 2)              #tempo di esecuzione della funzione in millisecondi, arrotondato alle 2 cifra
+    log_json("INFO", f"Chiamata a OpenFoodFacts completata con successo in {latency} ms", event_type="latency_API_call", nome=codice, latency=latency)
+    
     prodotto = risposta["product"]                                  #cambio formattazione per altra porta dell'API
     cibo = prodotto.get("nutriments", {})
     
-    calorie = 0.0                                                   #inizializzazione a zero(Evita il NameError se un macro manca)
+    calorie = 0.0                                                   #inizializzazione a zero (Evita il NameError se un macro manca)
     carbo = 0.0
     sugar = 0.0
     fibra = 0.0
@@ -63,6 +77,8 @@ def search_openfoodfacts(codice):
 
 
 def search_usda(cibo):
+    start_time = time.time()                    # Inizio del timer per misurare il tempo di esecuzione della funzione (secondi dal 1 gen 1970)
+
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"    #URL del sito della seconda API che ci darà le calorie in risposta
     USDA_key=os.environ.get("CHIAVE_USDA")                  #prendiamo la chiave API dai secrets, che abbiamo passato come variabile d'ambiente alla funzione cloud
     parametri = {
@@ -72,23 +88,28 @@ def search_usda(cibo):
          "dataType": ["Foundation", "SR Legacy"]            #tipi di dati che vogliamo, escludiamo i cibi dei supermercati, solo i cibi "ufficiali" del governo
     }
 
-    interrogazione = requests.get(url, params=parametri)
+    interrogazione = requests.get(url, params=parametri, timeout=7.0)             
     
     if interrogazione.status_code != 200:
+        log_json("ERROR", f"Chiamata a USDA fallita con codice {interrogazione.status_code}", event_type="failed_API_call", nome=cibo, status_code=interrogazione.status_code)
         return None
     
     risposta = interrogazione.json()                        #Conversione in dizionario/JSON Python
     
     # 2. CONTROLLO E FALLBACK CORRETTO: la lista "foods" è vuota?
     if not risposta.get("foods"):
-        return search_openfoodfacts(cibo)                   #chiamata di emergenza: se non trova il cibo su USDA, lo cerchiamo su OpenFoodFacts
+        log_json("WARNING", f"prodotto assente su USA, chiiamata di riserva ad OpenFoodFacts", event_type="USDA_to_OFF_fallback", nome=cibo)
+        return search_openfoodfacts(cibo, "text")           #chiamata di emergenza: se non trova il cibo su USDA, lo cerchiamo su OpenFoodFacts
+    
+    latency = round((time.time() - start_time) * 1000, 2)              #tempo di esecuzione della funzione in millisecondi, arrotondato alle 2 cifra
+    log_json("INFO", f"Chiamata a USDA completata con successo in {latency} ms", event_type="latency_API_call", nome=cibo, latency=latency)
     
 
-    cibo = risposta["foods"][0]                             #Prendiamo il primo risultato della lista di cibi trovati
+    prodotto = risposta["foods"][0]                             #Prendiamo il primo risultato della lista di cibi trovati
 
-    nome_cibo = cibo["description"]                         #Prendiamo il nome del cibo trovato, lo useremo per la risposta al client
+    nome_cibo = prodotto["description"]                         #Prendiamo il nome del cibo trovato, lo useremo per la risposta al client
 
-    calorie = 0.0                                           #inizializzazione a zero(Evita il NameError se un macro manca)
+    calorie = 0.0                                               #inizializzazione a zero (Evita il NameError se un macro manca)
     carbo = 0.0
     sugar = 0.0
     fibra = 0.0
@@ -98,7 +119,7 @@ def search_usda(cibo):
     sodio = 0.0
     potassio = 0.0
 
-    for i in cibo["foodNutrients"]:                         #ciclo for per scorrere tutti i nutrienti del cibo trovato. In Python "i" non è per forza un numero, ma si adatta! qui i è una struct
+    for i in prodotto["foodNutrients"]:                         #ciclo for per scorrere tutti i nutrienti del cibo trovato. In Python "i" non è per forza un numero, ma si adatta! qui i è una struct
         if i["nutrientId"] == 1008:                 
             calorie = i["value"]
         elif i["nutrientId"] == 1005:
@@ -118,7 +139,7 @@ def search_usda(cibo):
         elif i["nutrientId"] == 1092:
             potassio = i["value"]
 
-    nutrienti = {                                           #impacchettiamo qui, nel main facciamo solo la normalizzazione
+    nutrienti = {                                               #impacchettiamo qui, nel main facciamo solo la normalizzazione
         "nome_cibo": nome_cibo,
         "calorie": calorie,
         "carboidrati": carbo,

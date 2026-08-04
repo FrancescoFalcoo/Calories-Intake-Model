@@ -7,12 +7,22 @@ from google.cloud import firestore
 from firebase_functions import firestore_fn
 from APIrequests import search_openfoodfacts, search_usda   #divisione del codice in due file per chiarezza, importiamo le funzioni di ricerca da APIrequests.py 
 
-#dpbbiamo inizializzare l'oggetto applicazione Flask e il client per il database
-db = firestore.Client(project="contacalorie-503715", database="calories-table")     #il comando dell'SDK di Google che crea il "gestore" della connessione a Firestore. Quando l'app girerà su GCP, questa riga si collegherà in automatico al tuo database.
+#libreie e funzione per logging
+import time
+import json
+
+def log_json(severity, message, **kwargs):          #**wkargs dice che oltre i primi due argomenti, gliene possiamo passare un altro numero arbitrario se vogliamo
+    print(json.dumps({"severity": severity, "message": message, **kwargs}))         #diventa un unico dizionario, che poi viene convertito in JSON e stampato sul log di GCP. GCP lo leggerà e lo formatterà in automatico
+
 
 #dobbiamo creare il punto di ingresso per le richieste HTTP
 
 def Calorimetro(request):                   #Inserendo request tra le parentesi, diciamo a Python di accettare i dati che Google Cloud invia automaticamente quando riceve una chiamata HTTP
+    start_time= time.time()
+
+    #dobbiamo inizializzar il client per il database
+    db = firestore.Client(project="contacalorie-503715", database="calories-table")     #il comando dell'SDK di Google che crea il "gestore" della connessione a Firestore. Quando l'app girerà su GCP, questa riga si collegherà in automatico al tuo database.
+
     if request.method != 'POST':            #accettiamo solo POST
         return {"errore": "Metodo non consentito, usa una richiesta POST"}, 405
     
@@ -24,25 +34,32 @@ def Calorimetro(request):                   #Inserendo request tra le parentesi,
     peso = richiesta_utente["quantità"]
     data = richiesta_utente["data"]
 
+    if not pasto or not peso or not data:               #controllo di sicurezza: se il client non ha mandato tutti i dati, ritorniamo un errore al client
+        log_json("ERROR", "richiesta invalida, specificare 'nome' cibo, 'quantità' in cui si è consumato e 'data' del giorno di consumo", event_type="invalid_request")
+        return {"errore":"richiesta invalida, specificare 'nome' cibo, 'quantità' in cui si è consumato e 'data' del giorno di consumo", }
+
+
+
     # ROUTER: È un codice a barre (solo numeri) o testo?
     if re.match(r'^\d{8,14}$', pasto):                  #se input_utente è un codice a barre (solo numeri, da 8 a 14 cifre) allora cerchiamo su OpenFoodFacts, altrimenti cerchiamo su USDA
-        nutrienti = search_openfoodfacts(pasto)
+        nutrienti = search_openfoodfacts(pasto, "barcode")
     else:
         nutrienti = search_usda(pasto)
 
     if not nutrienti or not isinstance(nutrienti, dict) or "calorie" not in nutrienti:      #controllo di sicurezza: se la funzione di ricerca non ha trovato il cibo, ritorniamo un errore al client
-        return {"errore": f"Prodotto non trovato o dati incompleti per: {pasto}"}, 404
+        log_json("ERROR", f"Prodotto non trovato o dati incompleti per: {pasto}", event_type="invalid_product", cibo=pasto, status_code=404)
+        return {"errore": f"Prodotto '{pasto}' non trovato"}, 404                           #bisogna SEMPRE dare una risposta con questo formato ad una HTTP function
 
     #normalizziamo i valori in base al peso che abbiamo 
-    true_cal = (nutrienti["calorie"] * peso)/100
-    true_carb = (nutrienti["carboidrati"] * peso)/100
-    true_sugar = (nutrienti["zuccheri"] * peso)/100
-    true_fibre = (nutrienti["fibre"] * peso)/100
-    true_sodio = (nutrienti["sodio"] * peso)/100
-    true_potassio = (nutrienti["potassio"] * peso)/100
-    true_saturi = (nutrienti["grassi_saturi"] * peso)/100
-    true_pro = (nutrienti["proteine"] * peso)/100
-    true_fat = (nutrienti["grassi"] * peso)/100
+    true_cal = round((nutrienti["calorie"] * peso)/100, 2)
+    true_carb = round((nutrienti["carboidrati"] * peso)/100, 2)
+    true_sugar = round((nutrienti["zuccheri"] * peso)/100, 2)
+    true_fibre = round((nutrienti["fibre"] * peso)/100, 2)
+    true_sodio = round((nutrienti["sodio"] * peso)/100, 2)
+    true_potassio = round((nutrienti["potassio"] * peso)/100, 2)
+    true_saturi = round((nutrienti["grassi_saturi"] * peso)/100, 2)
+    true_pro = round((nutrienti["proteine"] * peso)/100, 2)
+    true_fat = round((nutrienti["grassi"] * peso)/100, 2)
 
 
     #adesso mettiamo tutto nel nostro database,
@@ -63,24 +80,25 @@ def Calorimetro(request):                   #Inserendo request tra le parentesi,
     nome_documento = f"{nutrienti['nome_cibo']}_{peso}g"
     db.collection(data).document(nome_documento).set(dati_pasto)              #firestore è dinamico, se la collection pasti non c'è la crea, altrimenti si limita ad aggiungere. pure se dovessi cancellare i dati questo codice continuerebbe a funzionare!
 
-    #risposta al client che quello che chiesto è stato salvato
-    return ({"stato": "successo"},200)                  #restituiamo la stringa successo e il codice 200
+    latency= round(((time.time()-start_time)*1000),2)
+    log_json("INFO", f"prodotto '{pasto}' inserito col successo nel database in {latency} ms", event_type="product_saved", latency=latency, cibo=nutrienti["nome_cibo"])
 
+    return "Successo!!!"                    #restituiamo la stringa successo per mostrarlo subito al terminale lato client
 
 
 
 def Totalizzatore(event, context=None):                     #funzione che si attiva ogni volta che un documento viene aggiunto o rimosso da una collection, e calcola il totale dei nutrienti della collection
+    start_time = time.time()                    
 
     db = firestore.Client(project="contacalorie-503715", database="calories-table")     #il comando dell'SDK di Google che crea il "gestore" della connessione a Firestore. Quando l'app girerà su GCP, questa riga si collegherà in automatico al tuo database.
 
-    # 2. Trasformiamo l'indirizzo grezzo di Google in un oggetto Firestore
+    # Trasformiamo l'indirizzo grezzo di Google in un oggetto Firestore
     # str(context.resource) finisce sempre con ".../documents/pasti/yogurt_200g"
     path_relativo = str(context.resource).split("/documents/")[-1]
     doc_ref = db.document(path_relativo)
 
-    # 3. GUARD CLAUSE pulitissima col .id (senza toccare stringhe o event.params)
-    if doc_ref.id == "TOTALE":
-        print("Scrittura su TOTALE ignorata per evitare loop.")     #si attiva ogni volta che un nuovo documento viene tolto/messo in una collection, quindi anche quando viene messo TOTALE! Evitiamo loop
+    if doc_ref.id == "TOTALE":                                                          #si attiva ogni volta che un nuovo documento viene tolto/messo in una collection, quindi anche quando viene messo TOTALE! Evitiamo loop
+        log_json("INFO", "Scrittura su TOTALE ignorata (loop prevention)", event_type="loop_prevention")        
         return
 
     collezione_ref = doc_ref.parent                 #lui ci passa il riferimento al documento, ma noi vogliamo la collection, quindi prendiamo il parent del documento, cioè la collezione a cui appartiene il documento "padre", che ha scatenato l'evento
@@ -114,16 +132,17 @@ def Totalizzatore(event, context=None):                     #funzione che si att
     totale_ref.set({                                        #setta i valori del documento TOTALE con i valori
         "1_nome": "TOTALE",
         "2_peso": 0.0,
-        "3_kcal": tot_calorie,
-        "4_carboidrati": tot_carboidrati,
-        "5_zuccheri": tot_zuccheri,
-        "6_fibre": tot_fibre,
-        "7_proteine": tot_proteine,
-        "8_grassi": tot_grassi,
-        "9_grassi_saturi": tot_grassi_saturi,
-        "a_sodio": tot_sodio,
-        "b_potassio": tot_potassio,
+        "3_kcal": round(tot_calorie, 2),
+        "4_carboidrati": round(tot_carboidrati, 2),
+        "5_zuccheri": round(tot_zuccheri, 2),
+        "6_fibre": round(tot_fibre, 2),
+        "7_proteine": round(tot_proteine, 2),
+        "8_grassi": round(tot_grassi, 2),
+        "9_grassi_saturi": round(tot_grassi_saturi, 2),
+        "a_sodio": round(tot_sodio, 2),
+        "b_potassio": round(tot_potassio, 2),
     }, merge=True)                                          #merge=True significa che se il documento esiste già, aggiorna solo i campi che gli passiamo, senza cancellare gli altri campi che potrebbero esserci
 
-    print(f"Documento TOTALE aggiornato con successo nella collezione pasti!")
+    latency = round((time.time() - start_time) * 1000, 2)              
+    log_json("INFO", f"Documento TOTALE aggiornato con successo nella collezione pasti in {latency} ms", event_type="TOT_update", collection=collezione_ref.id, latency=latency)
     return
