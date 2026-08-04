@@ -83,7 +83,7 @@ def Calorimetro(request):                   #Inserendo request tra le parentesi,
     latency= round(((time.time()-start_time)*1000),2)
     log_json("INFO", f"prodotto '{pasto}' inserito col successo nel database in {latency} ms", event_type="product_saved", latency=latency, cibo=nutrienti["nome_cibo"])
 
-    return "Successo!!!"                    #restituiamo la stringa successo per mostrarlo subito al terminale lato client
+    return ({"stato": "successo"},200)                    #restituiamo la stringa successo per mostrarlo subito al terminale lato client
 
 
 
