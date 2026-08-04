@@ -1,4 +1,5 @@
-#!/usr/bin/env bash         #dice che deve essere eseguito con bash quando si fa la richiesta. 
+#!/usr/bin/env bash         
+#dice che deve essere eseguito con bash quando si fa la richiesta. 
 #è un commento finto (col !), per il codice è un commento, ma per il sistema operativo no! lo legge e sa che deve usare bash per eseguire questo script
 
 
