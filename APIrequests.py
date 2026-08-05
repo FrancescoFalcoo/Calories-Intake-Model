@@ -7,8 +7,12 @@ from google.cloud import firestore
 import time
 import json
 
+
+
 def log_json(severity, message, **kwargs):                                          #**wkargs dice che oltre i primi due argomenti, gliene possiamo passare un altro numero arbitrario se vogliamo
     print(json.dumps({"severity": severity, "message": message, **kwargs}))         #diventa un unico dizionario, che poi viene convertito in JSON e stampato sul log di GCP. GCP lo leggerà e lo formatterà in automatico
+
+
 
 def search_openfoodfacts(codice, tipo):
     start_time = time.time()                    # Inizio del timer per misurare il tempo di esecuzione della funzione (secondi dal 1 gen 1970)
@@ -32,8 +36,11 @@ def search_openfoodfacts(codice, tipo):
     # Mandiamo la richiesta HTTP GET 
     interrogazione = requests.get(url, params=parametri, headers=intestazioni, timeout=7.0)         #conviene sempre mettere il timeout
     
-    if interrogazione.status_code != 200:
-        log_json("ERROR", f"Chiamata a OpenFoodFacts fallita con codice {interrogazione.status_code}", event_type="failed_API_call", nome=codice, status_code=interrogazione.status_code)
+    if interrogazione.status_code != 200 and tipo=="barcode":
+        log_json("ERROR", f"Chiamata a OpenFoodFacts fallita con codice {interrogazione.status_code}", event_type="failed_API_call", API="OpenFoodFacts", nome=codice, status_code=interrogazione.status_code)
+        return None
+    elif interrogazione.status_code != 200 and tipo=="text":
+        log_json("ERROR", f"chiamada di riserva a OpenFoodFacts fallita con codice {interrogazione.status_code}", event_type="failed_fallback_API_call",nome=codice, status_code=interrogazione.status_code)
         return None
     
     risposta = interrogazione.json()                                #convertiamola in un dizionario, usiamo il metodo .json 
@@ -42,8 +49,11 @@ def search_openfoodfacts(codice, tipo):
         return None
 
     latency = round((time.time() - start_time) * 1000, 2)              #tempo di esecuzione della funzione in millisecondi, arrotondato alle 2 cifra
-    log_json("INFO", f"Chiamata a OpenFoodFacts completata con successo in {latency} ms", event_type="latency_API_call", nome=codice, latency=latency)
-    
+    if tipo == "barcode":
+        log_json("INFO", f"Chiamata a OpenFoodFacts completata con successo in {latency} ms", event_type="latency_API_call", nome=codice, latency=latency)
+    elif tipo == "text":
+        log_json("INFO", f"Chiamata di riserva a OpenFoodFacts completata con successo in {latency} ms", event_type="latency_fallback_API_call", nome=codice, latency=latency)
+
     prodotto = risposta["product"]                                  #cambio formattazione per altra porta dell'API
     cibo = prodotto.get("nutriments", {})
     
@@ -91,19 +101,18 @@ def search_usda(cibo):
     interrogazione = requests.get(url, params=parametri, timeout=7.0)             
     
     if interrogazione.status_code != 200:
-        log_json("ERROR", f"Chiamata a USDA fallita con codice {interrogazione.status_code}", event_type="failed_API_call", nome=cibo, status_code=interrogazione.status_code)
+        log_json("ERROR", f"Chiamata a USDA fallita con codice {interrogazione.status_code}", event_type="failed_API_call", nome=cibo, API="USDA", status_code=interrogazione.status_code)
         return None
     
-    risposta = interrogazione.json()                        #Conversione in dizionario/JSON Python
+    risposta = interrogazione.json()                            #Conversione in dizionario/JSON Python
     
     # 2. CONTROLLO E FALLBACK CORRETTO: la lista "foods" è vuota?
     if not risposta.get("foods"):
         log_json("WARNING", f"prodotto assente su USA, chiiamata di riserva ad OpenFoodFacts", event_type="USDA_to_OFF_fallback", nome=cibo)
-        return search_openfoodfacts(cibo, "text")           #chiamata di emergenza: se non trova il cibo su USDA, lo cerchiamo su OpenFoodFacts
+        return search_openfoodfacts(cibo, "text")               #chiamata di emergenza: se non trova il cibo su USDA, lo cerchiamo su OpenFoodFacts
     
-    latency = round((time.time() - start_time) * 1000, 2)              #tempo di esecuzione della funzione in millisecondi, arrotondato alle 2 cifra
+    latency = round((time.time() - start_time) * 1000, 2)                               #tempo di esecuzione della funzione in millisecondi, arrotondato alle 2 cifra
     log_json("INFO", f"Chiamata a USDA completata con successo in {latency} ms", event_type="latency_API_call", nome=cibo, latency=latency)
-    
 
     prodotto = risposta["foods"][0]                             #Prendiamo il primo risultato della lista di cibi trovati
 
